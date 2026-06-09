@@ -51,9 +51,6 @@ module cnn_top_multichannel_serial #(
     localparam S_LOAD             = 6'd0;
     localparam S_LOAD_FLUSH       = 6'd1;
     localparam S_CONV_START       = 6'd2;
-    localparam S_CONV_BIAS_REQ    = 6'd3;
-    localparam S_CONV_BIAS_WAIT   = 6'd4;
-    localparam S_CONV_BIAS_CAP    = 6'd5;
     localparam S_CONV_W_REQ       = 6'd6;
     localparam S_CONV_W_WAIT      = 6'd7;
     localparam S_CONV_W_CAP       = 6'd8;
@@ -62,14 +59,15 @@ module cnn_top_multichannel_serial #(
     localparam S_POOL_WAIT        = 6'd11;
     localparam S_POOL_CAP         = 6'd12;
     localparam S_FC_START         = 6'd13;
-    localparam S_FC_BIAS_REQ      = 6'd14;
-    localparam S_FC_BIAS_WAIT     = 6'd15;
-    localparam S_FC_BIAS_CAP      = 6'd16;
     localparam S_FC_W_REQ         = 6'd17;
     localparam S_FC_W_WAIT        = 6'd18;
     localparam S_FC_W_CAP         = 6'd19;
     localparam S_OUTPUT           = 6'd20;
     localparam S_DONE             = 6'd21;
+    localparam S_BIAS_PRELOAD_START = 6'd22;
+    localparam S_BIAS_PRELOAD_REQ   = 6'd23;
+    localparam S_BIAS_PRELOAD_WAIT  = 6'd24;
+    localparam S_BIAS_PRELOAD_CAP   = 6'd25;
 
     reg [5:0] state;
     reg [2:0] conv_layer;
@@ -84,8 +82,11 @@ module cnn_top_multichannel_serial #(
     reg [3:0]  fc_class;
     reg [3:0]  out_idx;
     reg [1:0]  pool_idx;
+    reg [3:0]  bias_idx;
+    reg [2:0]  bias_layer;
     reg signed [DATA_WIDTH-1:0] pool_max;
     reg signed [ACC_WIDTH-1:0] acc;
+    reg signed [DATA_WIDTH-1:0] bias_regs [0:9];
     reg signed [DATA_WIDTH-1:0] scores [0:9];
 
     reg act_rd_en;
@@ -245,6 +246,69 @@ module cnn_top_multichannel_serial #(
         end
     endfunction
 
+    task start_bias_preload;
+        input [2:0] layer;
+        begin
+            bias_layer <= layer;
+            bias_idx <= 4'd0;
+            state <= S_BIAS_PRELOAD_START;
+        end
+    endtask
+
+    task issue_conv_fetch;
+        input [2:0] layer;
+        input integer out_channel;
+        input integer in_channel;
+        input integer kernel_index;
+        input integer dst_row;
+        input integer dst_col;
+        integer rr;
+        integer cc;
+        integer addr_calc;
+        begin
+            addr_calc = (((out_channel * conv_in_ch(layer)) + in_channel) * 9) + kernel_index;
+            mem_req_valid <= 1'b1;
+            mem_req_layer <= layer;
+            mem_req_kind <= MEM_KIND_WEIGHT;
+            mem_req_addr <= addr_calc[15:0];
+
+            rr = dst_row + (kernel_index / 3) - 1;
+            cc = dst_col + (kernel_index % 3) - 1;
+            if (rr < 0 || cc < 0 || rr >= conv_width(layer) || cc >= conv_width(layer)) begin
+                act_rd_en <= 1'b0;
+                act_rd_addr <= 16'd0;
+            end else begin
+                act_rd_en <= 1'b1;
+                act_rd_addr <= conv_read_addr(layer, in_channel, rr, cc);
+            end
+        end
+    endtask
+
+    task issue_pool_fetch;
+        input [2:0] layer;
+        input integer channel;
+        input integer dst_row;
+        input integer dst_col;
+        input [1:0] idx;
+        begin
+            act_rd_en <= 1'b1;
+            act_rd_addr <= pool_src_addr(layer, channel, dst_row, dst_col, idx);
+        end
+    endtask
+
+    task issue_fc_fetch;
+        input integer class_num;
+        input integer feature_num;
+        begin
+            mem_req_valid <= 1'b1;
+            mem_req_layer <= L_FC;
+            mem_req_kind <= MEM_KIND_WEIGHT;
+            mem_req_addr <= (class_num * 490) + feature_num;
+            act_rd_en <= 1'b1;
+            act_rd_addr <= BUF_A + feature_num;
+        end
+    endtask
+
     task advance_conv_position;
         begin
             if (out_ch == 9) begin
@@ -257,7 +321,7 @@ module cnn_top_multichannel_serial #(
                             state <= S_POOL_START;
                         end else begin
                             conv_layer <= conv_layer + 1'b1;
-                            state <= S_CONV_START;
+                            start_bias_preload(conv_layer + 1'b1);
                         end
                     end else begin
                         row <= row + 1'b1;
@@ -284,9 +348,9 @@ module cnn_top_multichannel_serial #(
                         row <= 0;
                         if (conv_layer == L_CONV2) begin
                             conv_layer <= L_CONV3;
-                            state <= S_CONV_START;
+                            start_bias_preload(L_CONV3);
                         end else begin
-                            state <= S_FC_START;
+                            start_bias_preload(L_FC);
                         end
                     end else begin
                         row <= row + 1'b1;
@@ -326,6 +390,8 @@ module cnn_top_multichannel_serial #(
             fc_class <= 4'd0;
             out_idx <= 4'd0;
             pool_idx <= 2'd0;
+            bias_idx <= 4'd0;
+            bias_layer <= L_CONV1;
             pool_max <= {DATA_WIDTH{1'b0}};
             acc <= {ACC_WIDTH{1'b0}};
             act_rd_en <= 1'b0;
@@ -333,7 +399,10 @@ module cnn_top_multichannel_serial #(
             act_wr_en <= 1'b0;
             act_wr_addr <= 16'd0;
             act_wr_data <= 16'd0;
-            for (i = 0; i < 10; i = i + 1) scores[i] <= {DATA_WIDTH{1'b0}};
+            for (i = 0; i < 10; i = i + 1) begin
+                bias_regs[i] <= {DATA_WIDTH{1'b0}};
+                scores[i] <= {DATA_WIDTH{1'b0}};
+            end
         end else begin
             mem_req_valid <= 1'b0;
             valid_out <= 1'b0;
@@ -365,50 +434,52 @@ module cnn_top_multichannel_serial #(
                 end
 
                 S_LOAD_FLUSH: begin
-                    state <= S_CONV_START;
+                    start_bias_preload(L_CONV1);
+                end
+
+
+                S_BIAS_PRELOAD_START: begin
+                    bias_idx <= 4'd0;
+                    state <= S_BIAS_PRELOAD_REQ;
+                end
+
+                S_BIAS_PRELOAD_REQ: begin
+                    mem_req_valid <= 1'b1;
+                    mem_req_layer <= bias_layer;
+                    mem_req_kind <= MEM_KIND_BIAS;
+                    mem_req_addr <= {12'd0, bias_idx};
+                    state <= S_BIAS_PRELOAD_WAIT;
+                end
+
+                S_BIAS_PRELOAD_WAIT: begin
+                    state <= S_BIAS_PRELOAD_CAP;
+                end
+
+                S_BIAS_PRELOAD_CAP: begin
+                    bias_regs[bias_idx] <= mem_resp_data;
+                    if (bias_idx == 4'd9) begin
+                        bias_idx <= 4'd0;
+                        if (bias_layer == L_FC) begin
+                            state <= S_FC_START;
+                        end else begin
+                            state <= S_CONV_START;
+                        end
+                    end else begin
+                        bias_idx <= bias_idx + 1'b1;
+                        state <= S_BIAS_PRELOAD_REQ;
+                    end
                 end
 
                 S_CONV_START: begin
                     in_ch <= 5'd0;
                     k_idx <= 4'd0;
-                    state <= S_CONV_BIAS_REQ;
-                end
-
-                S_CONV_BIAS_REQ: begin
-                    mem_req_valid <= 1'b1;
-                    mem_req_layer <= conv_layer;
-                    mem_req_kind <= MEM_KIND_BIAS;
-                    mem_req_addr <= {12'd0, out_ch[3:0]};
-                    state <= S_CONV_BIAS_WAIT;
-                end
-
-                S_CONV_BIAS_WAIT: begin
-                    state <= S_CONV_BIAS_CAP;
-                end
-
-                S_CONV_BIAS_CAP: begin
-                    acc <= {{(ACC_WIDTH-DATA_WIDTH){mem_resp_data[DATA_WIDTH-1]}}, mem_resp_data};
-                    state <= S_CONV_W_REQ;
+                    acc <= {{(ACC_WIDTH-DATA_WIDTH){bias_regs[out_ch[3:0]][DATA_WIDTH-1]}}, bias_regs[out_ch[3:0]]};
+                    issue_conv_fetch(conv_layer, out_ch, 0, 0, row, col);
+                    state <= S_CONV_W_WAIT;
                 end
 
                 S_CONV_W_REQ: begin
-                    weight_addr_calc = (((out_ch * conv_in_ch(conv_layer)) + in_ch) * 9) + k_idx;
-                    mem_req_valid <= 1'b1;
-                    mem_req_layer <= conv_layer;
-                    mem_req_kind <= MEM_KIND_WEIGHT;
-                    mem_req_addr <= weight_addr_calc[15:0];
-
-                    src_row = row;
-                    src_col = col;
-                    src_row = src_row + (k_idx / 3) - 1;
-                    src_col = src_col + (k_idx % 3) - 1;
-                    if (src_row < 0 || src_col < 0 || src_row >= conv_width(conv_layer) || src_col >= conv_width(conv_layer)) begin
-                        act_rd_en <= 1'b0;
-                        act_rd_addr <= 16'd0;
-                    end else begin
-                        act_rd_en <= 1'b1;
-                        act_rd_addr <= conv_read_addr(conv_layer, in_ch, src_row, src_col);
-                    end
+                    issue_conv_fetch(conv_layer, out_ch, in_ch, k_idx, row, col);
                     state <= S_CONV_W_WAIT;
                 end
 
@@ -441,22 +512,24 @@ module cnn_top_multichannel_serial #(
                             advance_conv_position();
                         end else begin
                             in_ch <= in_ch + 1'b1;
-                            state <= S_CONV_W_REQ;
+                            issue_conv_fetch(conv_layer, out_ch, in_ch + 1'b1, 0, row, col);
+                            state <= S_CONV_W_WAIT;
                         end
                     end else begin
                         k_idx <= k_idx + 1'b1;
-                        state <= S_CONV_W_REQ;
+                        issue_conv_fetch(conv_layer, out_ch, in_ch, k_idx + 1'b1, row, col);
+                        state <= S_CONV_W_WAIT;
                     end
                 end
 
                 S_POOL_START: begin
                     pool_idx <= 2'd0;
-                    state <= S_POOL_REQ;
+                    issue_pool_fetch(conv_layer, out_ch, row, col, 2'd0);
+                    state <= S_POOL_WAIT;
                 end
 
                 S_POOL_REQ: begin
-                    act_rd_en <= 1'b1;
-                    act_rd_addr <= pool_src_addr(conv_layer, out_ch, row, col, pool_idx);
+                    issue_pool_fetch(conv_layer, out_ch, row, col, pool_idx);
                     state <= S_POOL_WAIT;
                 end
 
@@ -468,7 +541,8 @@ module cnn_top_multichannel_serial #(
                     if (pool_idx == 2'd0) begin
                         pool_max <= act_rd_data;
                         pool_idx <= 2'd1;
-                        state <= S_POOL_REQ;
+                        issue_pool_fetch(conv_layer, out_ch, row, col, 2'd1);
+                        state <= S_POOL_WAIT;
                     end else if (pool_idx == 2'd3) begin
                         act_wr_en <= 1'b1;
                         act_wr_addr <= pool_dst_addr(conv_layer, out_ch, row, col);
@@ -478,41 +552,21 @@ module cnn_top_multichannel_serial #(
                     end else begin
                         pool_max <= max2(pool_max, act_rd_data);
                         pool_idx <= pool_idx + 1'b1;
-                        state <= S_POOL_REQ;
+                        issue_pool_fetch(conv_layer, out_ch, row, col, pool_idx + 1'b1);
+                        state <= S_POOL_WAIT;
                     end
                 end
 
                 S_FC_START: begin
                     fc_class <= 4'd0;
                     feat_idx <= 10'd0;
-                    state <= S_FC_BIAS_REQ;
-                end
-
-                S_FC_BIAS_REQ: begin
-                    mem_req_valid <= 1'b1;
-                    mem_req_layer <= L_FC;
-                    mem_req_kind <= MEM_KIND_BIAS;
-                    mem_req_addr <= {12'd0, fc_class};
-                    state <= S_FC_BIAS_WAIT;
-                end
-
-                S_FC_BIAS_WAIT: begin
-                    state <= S_FC_BIAS_CAP;
-                end
-
-                S_FC_BIAS_CAP: begin
-                    acc <= {{(ACC_WIDTH-DATA_WIDTH){mem_resp_data[DATA_WIDTH-1]}}, mem_resp_data};
-                    feat_idx <= 10'd0;
-                    state <= S_FC_W_REQ;
+                    acc <= {{(ACC_WIDTH-DATA_WIDTH){bias_regs[0][DATA_WIDTH-1]}}, bias_regs[0]};
+                    issue_fc_fetch(0, 0);
+                    state <= S_FC_W_WAIT;
                 end
 
                 S_FC_W_REQ: begin
-                    mem_req_valid <= 1'b1;
-                    mem_req_layer <= L_FC;
-                    mem_req_kind <= MEM_KIND_WEIGHT;
-                    mem_req_addr <= (fc_class * 490) + feat_idx;
-                    act_rd_en <= 1'b1;
-                    act_rd_addr <= BUF_A + feat_idx;
+                    issue_fc_fetch(fc_class, feat_idx);
                     state <= S_FC_W_WAIT;
                 end
 
@@ -530,11 +584,15 @@ module cnn_top_multichannel_serial #(
                             state <= S_OUTPUT;
                         end else begin
                             fc_class <= fc_class + 1'b1;
-                            state <= S_FC_BIAS_REQ;
+                            feat_idx <= 10'd0;
+                            acc <= {{(ACC_WIDTH-DATA_WIDTH){bias_regs[fc_class + 1'b1][DATA_WIDTH-1]}}, bias_regs[fc_class + 1'b1]};
+                            issue_fc_fetch(fc_class + 1'b1, 0);
+                            state <= S_FC_W_WAIT;
                         end
                     end else begin
                         feat_idx <= feat_idx + 1'b1;
-                        state <= S_FC_W_REQ;
+                        issue_fc_fetch(fc_class, feat_idx + 1'b1);
+                        state <= S_FC_W_WAIT;
                     end
                 end
 

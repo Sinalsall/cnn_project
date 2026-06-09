@@ -157,7 +157,54 @@ module cnn_top_multichannel_serial #(
         input integer c;
         input integer width;
         begin
-            tensor_addr = base + (ch * width * width) + (r * width) + c;
+            if (width == 28) begin
+                tensor_addr = base + (ch << 9) + (ch << 8) + (ch << 4) + (r << 5) - (r << 2) + c;
+            end else if (width == 14) begin
+                tensor_addr = base + (ch << 7) + (ch << 6) + (ch << 2) + (r << 4) - (r << 1) + c;
+            end else begin
+                tensor_addr = base + (ch << 5) + (ch << 4) + ch + (r << 3) - r + c;
+            end
+        end
+    endfunction
+
+    function integer kernel_row_offset;
+        input integer kernel_index;
+        begin
+            if (kernel_index < 3) kernel_row_offset = -1;
+            else if (kernel_index < 6) kernel_row_offset = 0;
+            else kernel_row_offset = 1;
+        end
+    endfunction
+
+    function integer kernel_col_offset;
+        input integer kernel_index;
+        begin
+            if (kernel_index == 0 || kernel_index == 3 || kernel_index == 6) kernel_col_offset = -1;
+            else if (kernel_index == 1 || kernel_index == 4 || kernel_index == 7) kernel_col_offset = 0;
+            else kernel_col_offset = 1;
+        end
+    endfunction
+
+    function [15:0] conv_weight_addr;
+        input [2:0] layer;
+        input integer out_channel;
+        input integer in_channel;
+        input integer kernel_index;
+        begin
+            if (layer == L_CONV1) begin
+                conv_weight_addr = (out_channel << 3) + out_channel + kernel_index;
+            end else begin
+                conv_weight_addr = (out_channel << 6) + (out_channel << 4) + (out_channel << 3) + (out_channel << 1) +
+                                   (in_channel << 3) + in_channel + kernel_index;
+            end
+        end
+    endfunction
+
+    function [15:0] fc_weight_addr;
+        input integer class_num;
+        input integer feature_num;
+        begin
+            fc_weight_addr = (class_num << 9) - (class_num << 4) - (class_num << 2) - (class_num << 1) + feature_num;
         end
     endfunction
 
@@ -264,16 +311,14 @@ module cnn_top_multichannel_serial #(
         input integer dst_col;
         integer rr;
         integer cc;
-        integer addr_calc;
         begin
-            addr_calc = (((out_channel * conv_in_ch(layer)) + in_channel) * 9) + kernel_index;
             mem_req_valid <= 1'b1;
             mem_req_layer <= layer;
             mem_req_kind <= MEM_KIND_WEIGHT;
-            mem_req_addr <= addr_calc[15:0];
+            mem_req_addr <= conv_weight_addr(layer, out_channel, in_channel, kernel_index);
 
-            rr = dst_row + (kernel_index / 3) - 1;
-            cc = dst_col + (kernel_index % 3) - 1;
+            rr = dst_row + kernel_row_offset(kernel_index);
+            cc = dst_col + kernel_col_offset(kernel_index);
             if (rr < 0 || cc < 0 || rr >= conv_width(layer) || cc >= conv_width(layer)) begin
                 act_rd_en <= 1'b0;
                 act_rd_addr <= 16'd0;
@@ -303,7 +348,7 @@ module cnn_top_multichannel_serial #(
             mem_req_valid <= 1'b1;
             mem_req_layer <= L_FC;
             mem_req_kind <= MEM_KIND_WEIGHT;
-            mem_req_addr <= (class_num * 490) + feature_num;
+            mem_req_addr <= fc_weight_addr(class_num, feature_num);
             act_rd_en <= 1'b1;
             act_rd_addr <= BUF_A + feature_num;
         end
@@ -474,13 +519,43 @@ module cnn_top_multichannel_serial #(
                     in_ch <= 5'd0;
                     k_idx <= 4'd0;
                     acc <= {{(ACC_WIDTH-DATA_WIDTH){bias_regs[out_ch[3:0]][DATA_WIDTH-1]}}, bias_regs[out_ch[3:0]]};
-                    issue_conv_fetch(conv_layer, out_ch, 0, 0, row, col);
-                    state <= S_CONV_W_WAIT;
+                    src_row = row - 1;
+                    src_col = col - 1;
+                    if (src_row < 0 || src_col < 0 || src_row >= conv_width(conv_layer) || src_col >= conv_width(conv_layer)) begin
+                        k_idx <= 4'd1;
+                        state <= S_CONV_W_REQ;
+                    end else begin
+                        issue_conv_fetch(conv_layer, out_ch, 0, 0, row, col);
+                        state <= S_CONV_W_WAIT;
+                    end
                 end
 
                 S_CONV_W_REQ: begin
-                    issue_conv_fetch(conv_layer, out_ch, in_ch, k_idx, row, col);
-                    state <= S_CONV_W_WAIT;
+                    src_row = row;
+                    src_col = col;
+                    src_row = src_row + kernel_row_offset(k_idx);
+                    src_col = src_col + kernel_col_offset(k_idx);
+                    if (src_row < 0 || src_col < 0 || src_row >= conv_width(conv_layer) || src_col >= conv_width(conv_layer)) begin
+                        if (k_idx == 4'd8) begin
+                            k_idx <= 4'd0;
+                            if (in_ch == conv_in_ch(conv_layer)-1) begin
+                                act_wr_en <= 1'b1;
+                                act_wr_addr <= conv_write_addr(conv_layer, out_ch, row, col);
+                                act_wr_data <= relu16(trunc_acc(acc));
+                                in_ch <= 5'd0;
+                                advance_conv_position();
+                            end else begin
+                                in_ch <= in_ch + 1'b1;
+                                state <= S_CONV_W_REQ;
+                            end
+                        end else begin
+                            k_idx <= k_idx + 1'b1;
+                            state <= S_CONV_W_REQ;
+                        end
+                    end else begin
+                        issue_conv_fetch(conv_layer, out_ch, in_ch, k_idx, row, col);
+                        state <= S_CONV_W_WAIT;
+                    end
                 end
 
                 S_CONV_W_WAIT: begin
@@ -490,8 +565,8 @@ module cnn_top_multichannel_serial #(
                 S_CONV_W_CAP: begin
                     src_row = row;
                     src_col = col;
-                    src_row = src_row + (k_idx / 3) - 1;
-                    src_col = src_col + (k_idx % 3) - 1;
+                    src_row = src_row + kernel_row_offset(k_idx);
+                    src_col = src_col + kernel_col_offset(k_idx);
                     if (src_row < 0 || src_col < 0 || src_row >= conv_width(conv_layer) || src_col >= conv_width(conv_layer)) begin
                         acc <= acc;
                     end else begin

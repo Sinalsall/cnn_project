@@ -1,0 +1,43 @@
+# Simulation outputs
+*.vcd
+*.vvp
+*_sim
+tb/*_sim*
+sim.out
+sim_*.out
+*.fst
+*.ghw
+
+# Logs and generated reports
+*.log
+batch_results/
+
+# Downloaded datasets and generated sample previews
+mnist_raw/
+generated_hex/mnist_sample_hex.txt
+generated_hex/mnist_sample_label.txt
+generated_hex/mnist_sample_preview.pgm
+generated_hex/mnist_sample_preview.txt
+
+# Python/tool caches
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Archives and local backups
+*.zip
+*.tar
+*.tar.gz
+*.bak
+backup/
+
+# OpenLane/build outputs
+runs/
+openlane/*/runs/
+reports/
+results/
+tmp/
+
+# Editor/OS noise
+.DS_Store
+.vscode/

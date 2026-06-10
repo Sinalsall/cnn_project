@@ -4,11 +4,20 @@ OpenLane2 bring-up files are now available for the sequential CNN top.
 
 ## Target Top
 
-Current RTL top:
+Current OpenLane layout top:
 
 ```text
-rtl_sequential/cnn_top_multichannel_serial.v
+rtl_sequential/cnn_top_multichannel_serial_with_param_sram.v
 ```
+
+The wrapper instantiates:
+
+- `cnn_top_multichannel_serial` as the compute core.
+- `cnn_param_sram_bank` for on-chip weights and biases.
+- `cnn_activation_sram_bank` inside the compute core for on-chip activations.
+
+Weights and biases can be loaded before inference through the wrapper ports
+`param_wr_en`, `param_wr_addr`, and `param_wr_data`.
 
 ## Config
 
@@ -21,25 +30,25 @@ openlane/cnn_top_multichannel_serial/config.yaml
 First synthesis smoke test:
 
 ```sh
-openlane --manual-pdk --pdk-root /foss/pdks -p gf180mcuD -s gf180mcu_fd_sc_mcu7t5v0 -j 4 --run-tag synth_smoke --to Yosys.Synthesis openlane/cnn_top_multichannel_serial/config.yaml
+openlane --manual-pdk --pdk-root /foss/pdks -p gf180mcuD -s gf180mcu_fd_sc_mcu7t5v0 -j 4 --run-tag wrapper_synth_smoke --to Yosys.Synthesis openlane/cnn_top_multichannel_serial/config.yaml
 ```
 
-Floorplan smoke test:
+Manual macro placement smoke test:
 
 ```sh
-openlane --manual-pdk --pdk-root /foss/pdks -p gf180mcuD -s gf180mcu_fd_sc_mcu7t5v0 -j 4 --run-tag floorplan_smoke --to OpenROAD.Floorplan openlane/cnn_top_multichannel_serial/config.yaml
+openlane --manual-pdk --pdk-root /foss/pdks -p gf180mcuD -s gf180mcu_fd_sc_mcu7t5v0 -j 4 --run-tag wrapper_macro_place_smoke --to Odb.ManualMacroPlacement openlane/cnn_top_multichannel_serial/config.yaml
 ```
 
 PDN smoke test:
 
 ```sh
-openlane --manual-pdk --pdk-root /foss/pdks -p gf180mcuD -s gf180mcu_fd_sc_mcu7t5v0 -j 4 --run-tag pdn_smoke_sram_ladder --to OpenROAD.GeneratePDN openlane/cnn_top_multichannel_serial/config.yaml
+openlane --manual-pdk --pdk-root /foss/pdks -p gf180mcuD -s gf180mcu_fd_sc_mcu7t5v0 -j 4 --run-tag wrapper_pdn_smoke --to OpenROAD.GeneratePDN openlane/cnn_top_multichannel_serial/config.yaml
 ```
 
 Global placement smoke test:
 
 ```sh
-openlane --manual-pdk --pdk-root /foss/pdks -p gf180mcuD -s gf180mcu_fd_sc_mcu7t5v0 -j 4 --run-tag gpl_smoke --to OpenROAD.GlobalPlacement openlane/cnn_top_multichannel_serial/config.yaml
+openlane --manual-pdk --pdk-root /foss/pdks -p gf180mcuD -s gf180mcu_fd_sc_mcu7t5v0 -j 4 --run-tag wrapper_gpl_smoke --to OpenROAD.GlobalPlacement openlane/cnn_top_multichannel_serial/config.yaml
 ```
 
 ## SRAM Macro
@@ -68,23 +77,22 @@ The custom PDN file adds the macro via ladder needed to connect SRAM VDD/VSS.
 
 Important current-state note:
 
-The layout target `cnn_top_multichannel_serial` instantiates the activation SRAM bank internally:
+The layout target `cnn_top_multichannel_serial_with_param_sram` instantiates both activation and parameter SRAM:
 
 - Activation SRAM: 16 banks x 1024x16 = 32 macros of 1024x8.
+- Parameter SRAM: 8 banks x 1024x16 = 16 macros of 1024x8.
 
-The parameter SRAM bank is still external to this top through the `mem_req_*` / `mem_resp_data` interface and is used by the simulation testbench. A future SRAM-system wrapper should instantiate `cnn_param_sram_bank` if the final chip top must include parameter storage on-die, which would add 16 more SRAM macros.
-
-## Next Tasks
+Total: 48 macros of 1024x8.
 
 ## Current Smoke Status
 
 Last checked locally:
 
 - Sequential MNIST batch smoke: passed 2/2 samples.
-- Yosys/OpenLane synthesis: passed, with 32 SRAM macro instances and no inferred memories.
-- Floorplan/manual macro placement: passed, 32 SRAM instances placed.
+- Yosys/OpenLane synthesis: passed, with 48 SRAM macro instances and no inferred memories.
+- Floorplan/manual macro placement: passed, 48 SRAM instances placed.
 - PDN generation: passed connectivity with `design__power_grid_violation__count = 0`.
-- Global placement: passed. Final placement overflow reported around `0.0996`.
+- Global placement has not yet been rerun after adding parameter SRAM; this is the next physical-design smoke step.
 
 Known non-fatal warnings remain:
 
@@ -97,4 +105,4 @@ Known non-fatal warnings remain:
 1. Clean width warnings in RTL without changing fixed-point behavior.
 2. Migrate macro placement from `MACRO_PLACEMENT_CFG` to OpenLane2 `MACROS`.
 3. Run global route smoke and inspect congestion/overflow.
-4. Decide whether to create an SRAM-system wrapper with parameter SRAM included before full PnR/signoff.
+4. Run PDN/global-placement again after each macro placement or die-size iteration.

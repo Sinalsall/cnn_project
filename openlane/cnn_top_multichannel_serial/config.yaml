@@ -1,8 +1,10 @@
-DESIGN_NAME: cnn_top_multichannel_serial
+DESIGN_NAME: cnn_top_multichannel_serial_with_param_sram
 VERILOG_FILES:
   - dir::../../rtl_sequential/sram16_1024_wrapper.v
   - dir::../../rtl_sequential/cnn_activation_sram_bank.v
+  - dir::../../rtl_sequential/cnn_param_sram_bank.v
   - dir::../../rtl_sequential/cnn_top_multichannel_serial.v
+  - dir::../../rtl_sequential/cnn_top_multichannel_serial_with_param_sram.v
 EXTRA_VERILOG_MODELS:
   - dir::../../third_party/gf180mcu_ocd_ip_sram/sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.blackbox.v
 EXTRA_LEFS:
@@ -24,11 +26,12 @@ FP_PIN_ORDER_CFG: dir::pin_order.cfg
 MACRO_PLACEMENT_CFG: dir::macro_placement.cfg
 FP_PDN_CFG: dir::pdn_sram1024.tcl
 FP_SIZING: absolute
-DIE_AREA: [0, 0, 3500, 3500]
+DIE_AREA: [0, 0, 4200, 4200]
 VDD_NETS: [VDD]
 GND_NETS: [VSS]
 PDN_MACRO_CONNECTIONS:
-  - "u_activation_sram.* VDD VSS VDD VSS"
+  - "u_core.u_activation_sram.* VDD VSS VDD VSS"
+  - "u_param_sram.* VDD VSS VDD VSS"
 FP_PDN_VOFFSET: 20
 FP_PDN_HOFFSET: 20
 FP_PDN_VWIDTH: 3

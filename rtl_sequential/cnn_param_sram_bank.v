@@ -30,6 +30,7 @@ module cnn_param_sram_bank #(
     wire [2:0] rd_bank = rd_addr[12:10];
     wire [2:0] wr_bank = wr_addr[12:10];
     wire [9:0] sram_addr = wr_en ? wr_addr[9:0] : rd_addr[9:0];
+    wire unused_addr_bits = |{rd_addr[15:13], wr_addr[15:13]};
 
     wire [15:0] bank_rdata [0:NUM_BANKS-1];
 
@@ -64,5 +65,7 @@ module cnn_param_sram_bank #(
         (rd_bank == 3'd5) ? bank_rdata[5] :
         (rd_bank == 3'd6) ? bank_rdata[6] :
                             bank_rdata[7];
+
+    wire _unused_ok = unused_addr_bits;
 
 endmodule

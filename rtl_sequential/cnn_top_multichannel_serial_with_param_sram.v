@@ -37,7 +37,6 @@ module cnn_top_multichannel_serial_with_param_sram #(
     output wire last_out
 );
 
-    localparam MEM_KIND_WEIGHT = 2'd0;
     localparam MEM_KIND_BIAS   = 2'd1;
 
     localparam L_CONV1 = 3'd0;

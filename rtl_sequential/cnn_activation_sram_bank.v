@@ -44,6 +44,7 @@ module cnn_activation_sram_bank #(
     wire [3:0] wr_bank = wr_addr[13:10];
     wire [9:0] rd_word = rd_addr[9:0];
     wire [9:0] wr_word = wr_addr[9:0];
+    wire unused_addr_bits = |{rd_addr[15:14], wr_addr[15:14]};
 
     assign same_bank_conflict = rd_en && wr_en && (rd_bank == wr_bank);
 
@@ -89,5 +90,7 @@ module cnn_activation_sram_bank #(
         (rd_bank == 4'd13) ? bank_rdata[13] :
         (rd_bank == 4'd14) ? bank_rdata[14] :
                               bank_rdata[15];
+
+    wire _unused_ok = unused_addr_bits;
 
 endmodule

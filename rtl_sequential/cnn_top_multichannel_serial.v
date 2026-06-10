@@ -101,10 +101,11 @@ module cnn_top_multichannel_serial #(
     reg [15:0] act_wr_addr;
     reg [15:0] act_wr_data;
     wire act_same_bank_conflict;
+    wire _unused_act_conflict = act_same_bank_conflict;
+    wire [15:0] load_act_addr = BUF_A + {5'd0, load_count};
 
     integer src_row;
     integer src_col;
-    integer weight_addr_calc;
     integer i;
 
     cnn_activation_sram_bank u_activation_sram (
@@ -138,6 +139,30 @@ module cnn_top_multichannel_serial #(
         end
     endfunction
 
+    function [4:0] conv_width_last;
+        input [2:0] layer;
+        begin
+            if (layer == L_CONV1 || layer == L_CONV2) conv_width_last = 5'd27;
+            else conv_width_last = 5'd13;
+        end
+    endfunction
+
+    function [4:0] pool_width_last;
+        input [2:0] layer;
+        begin
+            if (layer == L_CONV2) pool_width_last = 5'd13;
+            else pool_width_last = 5'd6;
+        end
+    endfunction
+
+    function [4:0] conv_in_ch_last;
+        input [2:0] layer;
+        begin
+            if (layer == L_CONV1) conv_in_ch_last = 5'd0;
+            else conv_in_ch_last = 5'd9;
+        end
+    endfunction
+
     function [15:0] conv_src_base;
         input [2:0] layer;
         begin
@@ -158,25 +183,37 @@ module cnn_top_multichannel_serial #(
         end
     endfunction
 
+/* verilator lint_off BLKSEQ */
+/* verilator lint_off UNUSEDSIGNAL */
     function [15:0] tensor_addr;
         input [15:0] base;
-        input integer ch;
-        input integer r;
-        input integer c;
+        input [4:0] ch;
+        input [4:0] r;
+        input [4:0] c;
         input integer width;
+        integer addr_calc;
+        integer base_i;
+        integer ch_i;
+        integer r_i;
+        integer c_i;
         begin
+            base_i = {16'd0, base};
+            ch_i = {27'd0, ch};
+            r_i = {27'd0, r};
+            c_i = {27'd0, c};
             if (width == 28) begin
-                tensor_addr = base + (ch << 9) + (ch << 8) + (ch << 4) + (r << 5) - (r << 2) + c;
+                addr_calc = base_i + (ch_i << 9) + (ch_i << 8) + (ch_i << 4) + (r_i << 5) - (r_i << 2) + c_i;
             end else if (width == 14) begin
-                tensor_addr = base + (ch << 7) + (ch << 6) + (ch << 2) + (r << 4) - (r << 1) + c;
+                addr_calc = base_i + (ch_i << 7) + (ch_i << 6) + (ch_i << 2) + (r_i << 4) - (r_i << 1) + c_i;
             end else begin
-                tensor_addr = base + (ch << 5) + (ch << 4) + ch + (r << 3) - r + c;
+                addr_calc = base_i + (ch_i << 5) + (ch_i << 4) + ch_i + (r_i << 3) - r_i + c_i;
             end
+            tensor_addr = addr_calc[15:0];
         end
     endfunction
 
     function integer kernel_row_offset;
-        input integer kernel_index;
+        input [3:0] kernel_index;
         begin
             if (kernel_index < 3) kernel_row_offset = -1;
             else if (kernel_index < 6) kernel_row_offset = 0;
@@ -185,7 +222,7 @@ module cnn_top_multichannel_serial #(
     endfunction
 
     function integer kernel_col_offset;
-        input integer kernel_index;
+        input [3:0] kernel_index;
         begin
             if (kernel_index == 0 || kernel_index == 3 || kernel_index == 6) kernel_col_offset = -1;
             else if (kernel_index == 1 || kernel_index == 4 || kernel_index == 7) kernel_col_offset = 0;
@@ -195,24 +232,38 @@ module cnn_top_multichannel_serial #(
 
     function [15:0] conv_weight_addr;
         input [2:0] layer;
-        input integer out_channel;
-        input integer in_channel;
-        input integer kernel_index;
+        input [4:0] out_channel;
+        input [4:0] in_channel;
+        input [3:0] kernel_index;
+        integer addr_calc;
+        integer out_i;
+        integer in_i;
+        integer kernel_i;
         begin
+            out_i = {27'd0, out_channel};
+            in_i = {27'd0, in_channel};
+            kernel_i = {28'd0, kernel_index};
             if (layer == L_CONV1) begin
-                conv_weight_addr = (out_channel << 3) + out_channel + kernel_index;
+                addr_calc = (out_i << 3) + out_i + kernel_i;
             end else begin
-                conv_weight_addr = (out_channel << 6) + (out_channel << 4) + (out_channel << 3) + (out_channel << 1) +
-                                   (in_channel << 3) + in_channel + kernel_index;
+                addr_calc = (out_i << 6) + (out_i << 4) + (out_i << 3) + (out_i << 1) +
+                            (in_i << 3) + in_i + kernel_i;
             end
+            conv_weight_addr = addr_calc[15:0];
         end
     endfunction
 
     function [15:0] fc_weight_addr;
-        input integer class_num;
-        input integer feature_num;
+        input [3:0] class_num;
+        input [9:0] feature_num;
+        integer addr_calc;
+        integer class_i;
+        integer feature_i;
         begin
-            fc_weight_addr = (class_num << 9) - (class_num << 4) - (class_num << 2) - (class_num << 1) + feature_num;
+            class_i = {28'd0, class_num};
+            feature_i = {22'd0, feature_num};
+            addr_calc = (class_i << 9) - (class_i << 4) - (class_i << 2) - (class_i << 1) + feature_i;
+            fc_weight_addr = addr_calc[15:0];
         end
     endfunction
 
@@ -246,25 +297,25 @@ module cnn_top_multichannel_serial #(
         reg signed [(DATA_WIDTH*2)-1:0] product;
         begin
             product = a * b;
-            q8_8_product = product >>> 8;
+            q8_8_product = {{(ACC_WIDTH-(DATA_WIDTH*2)){product[(DATA_WIDTH*2)-1]}}, product} >>> 8;
         end
     endfunction
 
     function [15:0] conv_read_addr;
         input [2:0] layer;
-        input integer ch;
+        input [4:0] ch;
         input integer r;
         input integer c;
         begin
-            conv_read_addr = tensor_addr(conv_src_base(layer), ch, r, c, conv_width(layer));
+            conv_read_addr = tensor_addr(conv_src_base(layer), ch, r[4:0], c[4:0], conv_width(layer));
         end
     endfunction
 
     function [15:0] conv_write_addr;
         input [2:0] layer;
-        input integer ch;
-        input integer r;
-        input integer c;
+        input [4:0] ch;
+        input [4:0] r;
+        input [4:0] c;
         begin
             conv_write_addr = tensor_addr(conv_dst_base(layer), ch, r, c, conv_width(layer));
         end
@@ -272,9 +323,9 @@ module cnn_top_multichannel_serial #(
 
     function [15:0] pool_src_addr;
         input [2:0] layer;
-        input integer ch;
-        input integer r;
-        input integer c;
+        input [4:0] ch;
+        input [4:0] r;
+        input [4:0] c;
         input [1:0] idx;
         integer src_w;
         integer rr;
@@ -285,22 +336,25 @@ module cnn_top_multichannel_serial #(
             base = (layer == L_CONV2) ? BUF_A : BUF_B;
             rr = (r * 2) + (idx[1] ? 1 : 0);
             cc = (c * 2) + (idx[0] ? 1 : 0);
-            pool_src_addr = tensor_addr(base, ch, rr, cc, src_w);
+            pool_src_addr = tensor_addr(base, ch, rr[4:0], cc[4:0], src_w);
         end
     endfunction
 
     function [15:0] pool_dst_addr;
         input [2:0] layer;
-        input integer ch;
-        input integer r;
-        input integer c;
+        input [4:0] ch;
+        input [4:0] r;
+        input [4:0] c;
         reg [15:0] base;
         begin
             base = (layer == L_CONV2) ? BUF_B : BUF_A;
             pool_dst_addr = tensor_addr(base, ch, r, c, conv_width(layer)/2);
         end
     endfunction
+/* verilator lint_on UNUSEDSIGNAL */
+/* verilator lint_on BLKSEQ */
 
+/* verilator lint_off BLKSEQ */
     task start_bias_preload;
         input [2:0] layer;
         begin
@@ -312,11 +366,11 @@ module cnn_top_multichannel_serial #(
 
     task issue_conv_fetch;
         input [2:0] layer;
-        input integer out_channel;
-        input integer in_channel;
-        input integer kernel_index;
-        input integer dst_row;
-        input integer dst_col;
+        input [4:0] out_channel;
+        input [4:0] in_channel;
+        input [3:0] kernel_index;
+        input [4:0] dst_row;
+        input [4:0] dst_col;
         integer rr;
         integer cc;
         begin
@@ -325,8 +379,8 @@ module cnn_top_multichannel_serial #(
             mem_req_kind <= MEM_KIND_WEIGHT;
             mem_req_addr <= conv_weight_addr(layer, out_channel, in_channel, kernel_index);
 
-            rr = dst_row + kernel_row_offset(kernel_index);
-            cc = dst_col + kernel_col_offset(kernel_index);
+            rr = {27'd0, dst_row} + kernel_row_offset(kernel_index);
+            cc = {27'd0, dst_col} + kernel_col_offset(kernel_index);
             if (rr < 0 || cc < 0 || rr >= conv_width(layer) || cc >= conv_width(layer)) begin
                 act_rd_en <= 1'b0;
                 act_rd_addr <= 16'd0;
@@ -339,9 +393,9 @@ module cnn_top_multichannel_serial #(
 
     task issue_pool_fetch;
         input [2:0] layer;
-        input integer channel;
-        input integer dst_row;
-        input integer dst_col;
+        input [4:0] channel;
+        input [4:0] dst_row;
+        input [4:0] dst_col;
         input [1:0] idx;
         begin
             act_rd_en <= 1'b1;
@@ -350,25 +404,26 @@ module cnn_top_multichannel_serial #(
     endtask
 
     task issue_fc_fetch;
-        input integer class_num;
-        input integer feature_num;
+        input [3:0] class_num;
+        input [9:0] feature_num;
         begin
             mem_req_valid <= 1'b1;
             mem_req_layer <= L_FC;
             mem_req_kind <= MEM_KIND_WEIGHT;
             mem_req_addr <= fc_weight_addr(class_num, feature_num);
             act_rd_en <= 1'b1;
-            act_rd_addr <= BUF_A + feature_num;
+            act_rd_addr <= BUF_A + {6'd0, feature_num};
         end
     endtask
+/* verilator lint_on BLKSEQ */
 
     task advance_conv_position;
         begin
             if (out_ch == 9) begin
                 out_ch <= 0;
-                if (col == conv_width(conv_layer)-1) begin
+                if (col == conv_width_last(conv_layer)) begin
                     col <= 0;
-                    if (row == conv_width(conv_layer)-1) begin
+                    if (row == conv_width_last(conv_layer)) begin
                         row <= 0;
                         if (conv_layer == L_CONV2 || conv_layer == L_CONV4) begin
                             state <= S_POOL_START;
@@ -395,9 +450,9 @@ module cnn_top_multichannel_serial #(
         begin
             if (out_ch == 9) begin
                 out_ch <= 0;
-                if (col == (conv_width(conv_layer)/2)-1) begin
+                if (col == pool_width_last(conv_layer)) begin
                     col <= 0;
-                    if (row == (conv_width(conv_layer)/2)-1) begin
+                    if (row == pool_width_last(conv_layer)) begin
                         row <= 0;
                         if (conv_layer == L_CONV2) begin
                             conv_layer <= L_CONV3;
@@ -468,7 +523,7 @@ module cnn_top_multichannel_serial #(
                     ready_out <= 1'b1;
                     if (valid_in) begin
                         act_wr_en <= 1'b1;
-                        act_wr_addr <= BUF_A + load_count;
+                        act_wr_addr <= load_act_addr;
                         act_wr_data <= pixel_in;
                         if (last_in || load_count == 11'd783) begin
                             ready_out <= 1'b0;
@@ -524,11 +579,13 @@ module cnn_top_multichannel_serial #(
                 end
 
                 S_CONV_START: begin
+/* verilator lint_off BLKSEQ */
                     in_ch <= 5'd0;
                     k_idx <= 4'd0;
                     acc <= {{(ACC_WIDTH-DATA_WIDTH){bias_regs[out_ch[3:0]][DATA_WIDTH-1]}}, bias_regs[out_ch[3:0]]};
-                    src_row = row - 1;
-                    src_col = col - 1;
+                    src_row = {27'd0, row} - 32'd1;
+                    src_col = {27'd0, col} - 32'd1;
+/* verilator lint_on BLKSEQ */
                     if (src_row < 0 || src_col < 0 || src_row >= conv_width(conv_layer) || src_col >= conv_width(conv_layer)) begin
                         k_idx <= 4'd1;
                         state <= S_CONV_W_REQ;
@@ -539,25 +596,27 @@ module cnn_top_multichannel_serial #(
                 end
 
                 S_CONV_W_REQ: begin
-                    src_row = row;
-                    src_col = col;
+/* verilator lint_off BLKSEQ */
+                    src_row = {27'd0, row};
+                    src_col = {27'd0, col};
                     src_row = src_row + kernel_row_offset(k_idx);
                     src_col = src_col + kernel_col_offset(k_idx);
+/* verilator lint_on BLKSEQ */
                     if (src_row < 0 || src_col < 0 || src_row >= conv_width(conv_layer) || src_col >= conv_width(conv_layer)) begin
                         if (k_idx == 4'd8) begin
                             k_idx <= 4'd0;
-                            if (in_ch == conv_in_ch(conv_layer)-1) begin
+                            if (in_ch == conv_in_ch_last(conv_layer)) begin
                                 act_wr_en <= 1'b1;
                                 act_wr_addr <= conv_write_addr(conv_layer, out_ch, row, col);
                                 act_wr_data <= relu16(trunc_acc(acc));
                                 in_ch <= 5'd0;
                                 advance_conv_position();
                             end else begin
-                                in_ch <= in_ch + 1'b1;
+                                in_ch <= in_ch + 5'd1;
                                 state <= S_CONV_W_REQ;
                             end
                         end else begin
-                            k_idx <= k_idx + 1'b1;
+                            k_idx <= k_idx + 4'd1;
                             state <= S_CONV_W_REQ;
                         end
                     end else begin
@@ -571,10 +630,12 @@ module cnn_top_multichannel_serial #(
                 end
 
                 S_CONV_W_CAP: begin
-                    src_row = row;
-                    src_col = col;
+/* verilator lint_off BLKSEQ */
+                    src_row = {27'd0, row};
+                    src_col = {27'd0, col};
                     src_row = src_row + kernel_row_offset(k_idx);
                     src_col = src_col + kernel_col_offset(k_idx);
+/* verilator lint_on BLKSEQ */
                     if (src_row < 0 || src_col < 0 || src_row >= conv_width(conv_layer) || src_col >= conv_width(conv_layer)) begin
                         acc <= acc;
                     end else begin
@@ -583,7 +644,7 @@ module cnn_top_multichannel_serial #(
 
                     if (k_idx == 4'd8) begin
                         k_idx <= 4'd0;
-                        if (in_ch == conv_in_ch(conv_layer)-1) begin
+                        if (in_ch == conv_in_ch_last(conv_layer)) begin
                             act_wr_en <= 1'b1;
                             act_wr_addr <= conv_write_addr(conv_layer, out_ch, row, col);
                             if (src_row < 0 || src_col < 0 || src_row >= conv_width(conv_layer) || src_col >= conv_width(conv_layer)) begin
@@ -594,13 +655,13 @@ module cnn_top_multichannel_serial #(
                             in_ch <= 5'd0;
                             advance_conv_position();
                         end else begin
-                            in_ch <= in_ch + 1'b1;
-                            issue_conv_fetch(conv_layer, out_ch, in_ch + 1'b1, 0, row, col);
+                            in_ch <= in_ch + 5'd1;
+                            issue_conv_fetch(conv_layer, out_ch, in_ch + 5'd1, 4'd0, row, col);
                             state <= S_CONV_W_WAIT;
                         end
                     end else begin
-                        k_idx <= k_idx + 1'b1;
-                        issue_conv_fetch(conv_layer, out_ch, in_ch, k_idx + 1'b1, row, col);
+                        k_idx <= k_idx + 4'd1;
+                        issue_conv_fetch(conv_layer, out_ch, in_ch, k_idx + 4'd1, row, col);
                         state <= S_CONV_W_WAIT;
                     end
                 end
@@ -634,8 +695,8 @@ module cnn_top_multichannel_serial #(
                         advance_pool_position();
                     end else begin
                         pool_max <= max2(pool_max, act_rd_data);
-                        pool_idx <= pool_idx + 1'b1;
-                        issue_pool_fetch(conv_layer, out_ch, row, col, pool_idx + 1'b1);
+                        pool_idx <= pool_idx + 2'd1;
+                        issue_pool_fetch(conv_layer, out_ch, row, col, pool_idx + 2'd1);
                         state <= S_POOL_WAIT;
                     end
                 end
@@ -666,15 +727,15 @@ module cnn_top_multichannel_serial #(
                             out_idx <= 4'd0;
                             state <= S_OUTPUT;
                         end else begin
-                            fc_class <= fc_class + 1'b1;
+                            fc_class <= fc_class + 4'd1;
                             feat_idx <= 10'd0;
-                            acc <= {{(ACC_WIDTH-DATA_WIDTH){bias_regs[fc_class + 1'b1][DATA_WIDTH-1]}}, bias_regs[fc_class + 1'b1]};
-                            issue_fc_fetch(fc_class + 1'b1, 0);
+                            acc <= {{(ACC_WIDTH-DATA_WIDTH){bias_regs[fc_class + 4'd1][DATA_WIDTH-1]}}, bias_regs[fc_class + 4'd1]};
+                            issue_fc_fetch(fc_class + 4'd1, 10'd0);
                             state <= S_FC_W_WAIT;
                         end
                     end else begin
-                        feat_idx <= feat_idx + 1'b1;
-                        issue_fc_fetch(fc_class, feat_idx + 1'b1);
+                        feat_idx <= feat_idx + 10'd1;
+                        issue_fc_fetch(fc_class, feat_idx + 10'd1);
                         state <= S_FC_W_WAIT;
                     end
                 end

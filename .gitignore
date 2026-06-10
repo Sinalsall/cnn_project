@@ -15,6 +15,7 @@ sim_*.out
 *.log
 *.jou
 *.str
+*.terminal.log
 batch_results/
 rtl_sequential/batch_results/
 
@@ -47,6 +48,7 @@ openlane/**/runs/
 reports/
 results/
 tmp/
+openlane/**/final/
 openlane/**/*.odb
 openlane/**/*.def
 openlane/**/*.mag
@@ -55,6 +57,8 @@ openlane/**/*.spef
 openlane/**/*.sdf
 openlane/**/*.xml
 openlane/**/*.rpt
+openlane/**/signoff_evidence/*.rpt
+openlane/**/signoff_evidence/*.log
 
 # Local EDA scratch/checkpoint files
 *.history

@@ -68,10 +68,10 @@ Current macro count:
 
 ## Current Status
 
-Last known good full run:
+Academic final run:
 
 ```text
-wrapper_full_001
+wrapper_academic_final
 ```
 
 That run completed:
@@ -79,40 +79,44 @@ That run completed:
 - GDS streamout.
 - SPICE extraction.
 - Netgen LVS.
-- LVS result: circuits match uniquely.
+- Manufacturability report generation.
 
-Known output paths from that run:
+Academic final result:
+
+- LVS: pass, `design__lvs_error__count = 0`.
+- OpenROAD route DRC: pass, `route__drc_errors = 0`.
+- Setup timing: pass, WNS `0`, TNS `0`.
+- Power-grid checker: pass, `design__power_grid_violation__count = 0`.
+- Critical disconnected pins: pass, `design__critical_disconnected_pin__count = 0`.
+- Antenna: 2 nets / 2 pins remain.
+- Hold: remaining violations, documented as an academic waiver.
+- Max slew/max cap: remaining violations, documented as academic limitations.
+- Magic DRC: skipped in the academic final run; baseline full-GDS and SRAM evidence are documented separately.
+- KLayout DRC: unsupported for `gf180mcuD` in this OpenLane setup.
+
+Useful final-run paths:
 
 ```text
-openlane/cnn_top_multichannel_serial/runs/wrapper_full_001/56-magic-streamout/cnn_top_multichannel_serial_with_param_sram.gds
-openlane/cnn_top_multichannel_serial/runs/wrapper_full_001/57-klayout-streamout/cnn_top_multichannel_serial_with_param_sram.klayout.gds
-openlane/cnn_top_multichannel_serial/runs/wrapper_full_001/65-magic-spiceextraction/cnn_top_multichannel_serial_with_param_sram.spice
-openlane/cnn_top_multichannel_serial/runs/wrapper_full_001/67-netgen-lvs/reports/lvs.netgen.rpt
+openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final.terminal.log
+openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final/flow.log
+openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final/warning.log
+openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final/error.log
+openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final/76-misc-reportmanufacturability/state_out.json
+openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final/76-misc-reportmanufacturability/manufacturability.rpt
 ```
 
-Current optimized config status:
+The step number can change if the config changes. Prefer:
 
-- Route DRC clean.
-- Disconnected pins clean.
-- Setup timing clean at `CLOCK_PERIOD: 100`.
-- Residual signoff work remains:
-  - antenna violations,
-  - hold violations,
-  - max slew violations,
-  - max cap violations.
+```sh
+find openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final \
+  -maxdepth 2 -type d -name '*misc-reportmanufacturability' -print
+```
 
-Best recent run tags:
-
-| Run tag | Result |
-| --- | --- |
-| `wrapper_full_001` | First full GDS/SPICE/LVS run; LVS passed. |
-| `wrapper_antenna_003` | Best antenna-only route: 6 nets / 6 pins. |
-| `wrapper_repairtiming_001` | Better hold/slew/cap trade-off: 10 antenna nets / 10 pins, route DRC clean. |
-
-Detailed antenna notes are in:
+For a detailed teammate-facing guide, see:
 
 ```text
-openlane/cnn_top_multichannel_serial/antenna_iteration_notes.md
+openlane/cnn_top_multichannel_serial/README.md
+openlane/cnn_top_multichannel_serial/signoff_evidence/signoff_status.md
 ```
 
 ## Environment
@@ -176,21 +180,23 @@ openlane --condensed --manual-pdk --pdk-root /foss/pdks \
   openlane/cnn_top_multichannel_serial/config.yaml
 ```
 
-## Generate GDS/SPICE/LVS
+## Generate Academic GDS/SPICE/LVS Evidence
 
-Run the full flow from the current config:
+Run the academic final flow from the current config:
 
 ```sh
+PATH=/foss/tools/bin:/foss/tools/openroad/bin:/foss/tools/openroad-latest/bin:/foss/tools/magic/bin:/foss/tools/netgen/bin:/foss/tools/verilator/bin:/foss/tools/yosys/bin:/foss/tools/klayout:$PATH \
 openlane --condensed --manual-pdk --pdk-root /foss/pdks \
   -p gf180mcuD -s gf180mcu_fd_sc_mcu7t5v0 -j 4 \
-  --run-tag wrapper_full_next \
-  openlane/cnn_top_multichannel_serial/config.yaml
+  --run-tag wrapper_academic_final \
+  openlane/cnn_top_multichannel_serial/config.yaml \
+  2>&1 | tee openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final.terminal.log
 ```
 
 Outputs will appear under:
 
 ```text
-openlane/cnn_top_multichannel_serial/runs/wrapper_full_next/
+openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final/
 ```
 
 Typical output locations:
@@ -202,19 +208,34 @@ Typical output locations:
 */netgen-lvs/reports/lvs.netgen.rpt
 final/metrics.json
 flow.log
+warning.log
+error.log
 ```
 
 Useful checks after a full run:
 
 ```sh
-find openlane/cnn_top_multichannel_serial/runs/wrapper_full_next \
+find openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final \
   -type f \( -name '*.gds' -o -name '*.spice' -o -name 'lvs.netgen.rpt' -o -name 'metrics.json' \)
 ```
 
 ```sh
-rg -n "Final result|Circuits match|failed|ERROR|violation" \
-  openlane/cnn_top_multichannel_serial/runs/wrapper_full_next/flow.log \
-  openlane/cnn_top_multichannel_serial/runs/wrapper_full_next/*/reports/* 2>/dev/null
+STATE_OUT="$(find openlane/cnn_top_multichannel_serial/runs/wrapper_academic_final \
+  -maxdepth 2 -path '*misc-reportmanufacturability/state_out.json' | sort | tail -1)"
+
+jq '{
+  route_drc:.metrics.route__drc_errors,
+  lvs:.metrics.design__lvs_error__count,
+  antenna_nets:.metrics.antenna__violating__nets,
+  antenna_pins:.metrics.antenna__violating__pins,
+  setup_wns:.metrics.timing__setup__wns,
+  hold_wns:.metrics.timing__hold__wns,
+  hold_vios:.metrics.timing__hold_vio__count,
+  max_slew:.metrics.design__max_slew_violation__count,
+  max_cap:.metrics.design__max_cap_violation__count,
+  crit_disc:.metrics.design__critical_disconnected_pin__count,
+  pgv:.metrics.design__power_grid_violation__count
+}' "$STATE_OUT"
 ```
 
 ## Continue From a Checkpoint
@@ -257,20 +278,23 @@ These warnings are currently known and not automatically fatal:
 
 - Verilator width warnings in sequential RTL.
 - `MACRO_PLACEMENT_CFG` deprecation warning. OpenLane recommends migrating to `MACROS`.
-- `PDN-0110` warnings for some via sites around SRAM macro power pins.
+- `PDN-0110` warnings for some via sites around SRAM macro power pins. These are acceptable for the academic run because the OpenROAD power-grid checker reports zero violations and LVS passes.
+- `GRT-0097 No global routing found for nets` during intermediate STA/check steps. Final detailed route is still clean.
 - `LEF58_ENCLOSURE with no CUTCLASS is not supported` warnings in TritonRoute.
 - Large-net routing warnings on several control/data nets.
 
-Warnings that still need engineering attention:
+Academic waiver items:
 
 - residual antenna violations,
 - hold violations,
 - max slew violations,
 - max cap violations.
+- SRAM/macro-related Magic DRC.
+- unsupported KLayout DRC for `gf180mcuD`.
 
 ## Recommended Next Work
 
-1. Optimize high-fanout/long nets reported by detailed routing and STA.
-2. Keep the current post-GRT repair timing settings as the main baseline unless a new run improves antenna and timing together.
-3. Re-run full GDS/SPICE/LVS after residual timing/antenna is acceptable.
-4. If Magic DRC is needed, run with higher Docker memory and swap; the first full run skipped/struggled there due memory pressure.
+1. For the paper, use `wrapper_academic_final` plus `signoff_evidence/signoff_status.md`.
+2. If stricter signoff is required later, debug `OpenROAD.ResizerTimingPostGRT`, which fixes hold but hangs before completing the step in this environment.
+3. Fix Magic abstract DRC macro loading so SRAM LEF is read before DEF import.
+4. Continue antenna/DRV closure only if the academic waiver is not accepted.

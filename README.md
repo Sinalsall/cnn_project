@@ -26,7 +26,7 @@ Implemented and verified so far:
 - Intermediate activations are stored through SRAM banks.
 - Simulation against the Python golden model passes for the current MNIST sample flow.
 
-The RTL has progressed into OpenLane physical-design bring-up. A first full GDS/SPICE/LVS run exists, and the current work is focused on closing residual antenna/timing issues before treating the layout as signoff-ready.
+The RTL has progressed into OpenLane physical-design bring-up. The current repository state targets an academic signoff package: GDS/SPICE/LVS are generated, LVS and OpenROAD detailed-route DRC pass, and remaining antenna/timing/DRV/Magic-DRC limitations are documented as academic waivers.
 
 ## Key Files
 
@@ -128,19 +128,18 @@ Current physical-design status:
   - 32 macros for activation SRAM.
   - 16 macros for parameter SRAM.
 - Synthesis, floorplan, macro placement, PDN, placement, CTS, routing, RCX, GDS streamout, SPICE extraction, and LVS have been brought up.
-- Previous full run `wrapper_full_001` produced GDS and SPICE, and LVS passed.
-- Current optimized config enables diode insertion plus post-GRT design/timing repair.
-- Latest routing/timing optimization status:
-  - route DRC clean.
-  - disconnected pins clean.
-  - setup timing clean at 100 ns.
-  - residual issues remain: antenna, hold, max slew, and max cap.
+- Academic final run `wrapper_academic_final` produced GDS/SPICE artifacts and terminal logging.
+- LVS passed with `design__lvs_error__count = 0`.
+- OpenROAD detailed-route DRC passed with `route__drc_errors = 0`.
+- Setup timing is clean at 100 ns.
+- Power-grid checker reports `0` violations.
+- Critical disconnected pins are `0`.
+- Residual academic-waived issues remain: 2 antenna nets/pins, hold violations, max slew/max cap violations, and SRAM/macro-related Magic DRC.
 
-Known best checkpoints:
+Important documentation:
 
-- `wrapper_full_001`: first full GDS/SPICE/LVS run.
-- `wrapper_antenna_003`: best antenna-only route so far, 6 antenna nets / 6 pins.
-- `wrapper_repairtiming_001`: better hold/slew/cap trade-off, 10 antenna nets / 10 pins.
+- `openlane/cnn_top_multichannel_serial/README.md`: how to run academic signoff, where logs live, how to extract metrics, and what warnings mean.
+- `openlane/cnn_top_multichannel_serial/signoff_evidence/signoff_status.md`: signoff status and waiver rationale.
 
 See `openlane/README.md` for commands to regenerate GDS/SPICE/LVS and continue signoff.
 

@@ -5,12 +5,18 @@
 tb/*_sim*
 sim.out
 sim_*.out
+*.out
 *.fst
 *.ghw
+*.wlf
+*.fsdb
 
 # Logs and generated reports
 *.log
+*.jou
+*.str
 batch_results/
+rtl_sequential/batch_results/
 
 # Downloaded datasets and generated sample previews
 mnist_raw/
@@ -18,11 +24,14 @@ generated_hex/mnist_sample_hex.txt
 generated_hex/mnist_sample_label.txt
 generated_hex/mnist_sample_preview.pgm
 generated_hex/mnist_sample_preview.txt
+generated_hex/*preview*
 
 # Python/tool caches
 __pycache__/
 *.pyc
+.mypy_cache/
 .pytest_cache/
+.ruff_cache/
 
 # Archives and local backups
 *.zip
@@ -34,10 +43,29 @@ backup/
 # OpenLane/build outputs
 runs/
 openlane/*/runs/
+openlane/**/runs/
 reports/
 results/
 tmp/
+openlane/**/*.odb
+openlane/**/*.def
+openlane/**/*.mag
+openlane/**/*.ext
+openlane/**/*.spef
+openlane/**/*.sdf
+openlane/**/*.xml
+openlane/**/*.rpt
+
+# Local EDA scratch/checkpoint files
+*.history
+*.pid
+*.seed
+*.tmp
 
 # Editor/OS noise
 .DS_Store
 .vscode/
+.idea/
+*.swp
+*.swo
+*~

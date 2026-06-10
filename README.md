@@ -26,7 +26,7 @@ Implemented and verified so far:
 - Intermediate activations are stored through SRAM banks.
 - Simulation against the Python golden model passes for the current MNIST sample flow.
 
-The RTL is now ready for OpenLane bring-up work, but OpenLane configuration and macro placement are not final yet.
+The RTL has progressed into OpenLane physical-design bring-up. A first full GDS/SPICE/LVS run exists, and the current work is focused on closing residual antenna/timing issues before treating the layout as signoff-ready.
 
 ## Key Files
 
@@ -110,14 +110,39 @@ The macro is licensed under Apache-2.0 as indicated in the source header.
 
 ## OpenLane Status
 
-OpenLane integration is the next milestone. Required next steps:
+OpenLane bring-up is active under:
 
-1. Add OpenLane config for the sequential top.
-2. Add macro LEF/GDS/LIB files for `gf180mcu_ocd_ip_sram__sram1024x8m8wm1`.
-3. Define macro placement for parameter SRAM banks and activation SRAM banks.
-4. Run synthesis, floorplan, placement, CTS, routing, and signoff checks.
+```text
+openlane/cnn_top_multichannel_serial/
+```
 
-See `openlane/README.md` for the bring-up checklist.
+Current layout top:
+
+```text
+cnn_top_multichannel_serial_with_param_sram
+```
+
+Current physical-design status:
+
+- 48 SRAM1024x8 macros are integrated:
+  - 32 macros for activation SRAM.
+  - 16 macros for parameter SRAM.
+- Synthesis, floorplan, macro placement, PDN, placement, CTS, routing, RCX, GDS streamout, SPICE extraction, and LVS have been brought up.
+- Previous full run `wrapper_full_001` produced GDS and SPICE, and LVS passed.
+- Current optimized config enables diode insertion plus post-GRT design/timing repair.
+- Latest routing/timing optimization status:
+  - route DRC clean.
+  - disconnected pins clean.
+  - setup timing clean at 100 ns.
+  - residual issues remain: antenna, hold, max slew, and max cap.
+
+Known best checkpoints:
+
+- `wrapper_full_001`: first full GDS/SPICE/LVS run.
+- `wrapper_antenna_003`: best antenna-only route so far, 6 antenna nets / 6 pins.
+- `wrapper_repairtiming_001`: better hold/slew/cap trade-off, 10 antenna nets / 10 pins.
+
+See `openlane/README.md` for commands to regenerate GDS/SPICE/LVS and continue signoff.
 
 ## Notes
 

@@ -12,6 +12,10 @@
 module cnn_param_sram_bank #(
     parameter NUM_BANKS = 8
 )(
+`ifdef USE_POWER_PINS
+    inout wire VDD,
+    inout wire VSS,
+`endif
     input wire clk,
 
     input wire rd_en,
@@ -37,6 +41,10 @@ module cnn_param_sram_bank #(
             wire bank_en = bank_wr || bank_rd;
 
             sram16_1024_wrapper u_bank (
+`ifdef USE_POWER_PINS
+                .VDD(VDD),
+                .VSS(VSS),
+`endif
                 .clk(clk),
                 .cen(bank_en),
                 .wen(bank_wr),

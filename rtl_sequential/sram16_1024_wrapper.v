@@ -6,6 +6,10 @@
 // ================================================================
 
 module sram16_1024_wrapper (
+`ifdef USE_POWER_PINS
+    inout wire VDD,
+    inout wire VSS,
+`endif
     input wire clk,
     input wire cen,
     input wire wen,
@@ -34,6 +38,10 @@ module sram16_1024_wrapper (
     wire [7:0] q_hi;
 
     gf180mcu_ocd_ip_sram__sram1024x8m8wm1 u_sram_lo (
+`ifdef USE_POWER_PINS
+        .VDD(VDD),
+        .VSS(VSS),
+`endif
         .CLK(clk),
         .CEN(~cen),
         .GWEN(~wen),
@@ -44,6 +52,10 @@ module sram16_1024_wrapper (
     );
 
     gf180mcu_ocd_ip_sram__sram1024x8m8wm1 u_sram_hi (
+`ifdef USE_POWER_PINS
+        .VDD(VDD),
+        .VSS(VSS),
+`endif
         .CLK(clk),
         .CEN(~cen),
         .GWEN(~wen),

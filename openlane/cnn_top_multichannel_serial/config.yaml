@@ -1,0 +1,49 @@
+DESIGN_NAME: cnn_top_multichannel_serial
+VERILOG_FILES:
+  - dir::../../rtl_sequential/sram16_1024_wrapper.v
+  - dir::../../rtl_sequential/cnn_activation_sram_bank.v
+  - dir::../../rtl_sequential/cnn_top_multichannel_serial.v
+EXTRA_VERILOG_MODELS:
+  - dir::../../third_party/gf180mcu_ocd_ip_sram/sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.blackbox.v
+EXTRA_LEFS:
+  - dir::../../third_party/gf180mcu_ocd_ip_sram/sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.lef
+EXTRA_GDS_FILES:
+  - dir::../../third_party/gf180mcu_ocd_ip_sram/sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.gds
+EXTRA_SPICE_MODELS:
+  - dir::../../third_party/gf180mcu_ocd_ip_sram/sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1.spice
+EXTRA_LIBS:
+  - dir::../../third_party/gf180mcu_ocd_ip_sram/sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__tt_025C_3v30.lib
+  - dir::../../third_party/gf180mcu_ocd_ip_sram/sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__ff_125C_3v60.lib
+  - dir::../../third_party/gf180mcu_ocd_ip_sram/sram1024x8m8wm1/gf180mcu_ocd_ip_sram__sram1024x8m8wm1__ss_125C_3v00.lib
+CLOCK_PORT: clk
+CLOCK_PERIOD: 100
+FALLBACK_SDC_FILE: dir::base.sdc
+PNR_SDC_FILE: dir::base.sdc
+SIGNOFF_SDC_FILE: dir::base.sdc
+FP_PIN_ORDER_CFG: dir::pin_order.cfg
+MACRO_PLACEMENT_CFG: dir::macro_placement.cfg
+FP_PDN_CFG: dir::pdn_sram1024.tcl
+FP_SIZING: absolute
+DIE_AREA: [0, 0, 3500, 3500]
+VDD_NETS: [VDD]
+GND_NETS: [VSS]
+PDN_MACRO_CONNECTIONS:
+  - "u_activation_sram.* VDD VSS VDD VSS"
+FP_PDN_VOFFSET: 20
+FP_PDN_HOFFSET: 20
+FP_PDN_VWIDTH: 3
+FP_PDN_HWIDTH: 3
+FP_PDN_VPITCH: 90
+FP_PDN_HPITCH: 90
+FP_PDN_SKIPTRIM: true
+FP_PDN_HORIZONTAL_HALO: 20
+FP_PDN_VERTICAL_HALO: 20
+FP_MACRO_HORIZONTAL_HALO: 20
+FP_MACRO_VERTICAL_HALO: 20
+RT_MAX_LAYER: Metal4
+
+pdk::gf180mcu*:
+  FP_CORE_UTIL: 30
+  PL_TARGET_DENSITY_PCT: 40
+  MAX_FANOUT_CONSTRAINT: 4
+  CLOCK_PERIOD: 100

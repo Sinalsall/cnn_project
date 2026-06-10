@@ -16,6 +16,10 @@ module cnn_top_multichannel_serial #(
     parameter DATA_WIDTH = 16,
     parameter ACC_WIDTH  = 48
 )(
+`ifdef USE_POWER_PINS
+    inout wire VDD,
+    inout wire VSS,
+`endif
     input wire clk,
     input wire rst_n,
 
@@ -104,6 +108,10 @@ module cnn_top_multichannel_serial #(
     integer i;
 
     cnn_activation_sram_bank u_activation_sram (
+`ifdef USE_POWER_PINS
+        .VDD(VDD),
+        .VSS(VSS),
+`endif
         .clk(clk),
         .rd_en(act_rd_en),
         .rd_addr(act_rd_addr),

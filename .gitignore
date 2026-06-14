@@ -49,6 +49,14 @@ reports/
 results/
 tmp/
 openlane/**/final/
+openlane/**/postlayout_spice/build/
+openlane/**/postlayout_spice/*.raw
+openlane/**/postlayout_spice/*.out
+openlane/**/postlayout_gate_sim/build/
+openlane/**/postlayout_gate_sim/*.vcd
+!openlane/**/postlayout_gate_sim/
+!openlane/**/postlayout_gate_sim/*.sh
+!openlane/**/postlayout_gate_sim/*.v
 openlane/**/*.odb
 openlane/**/*.def
 openlane/**/*.mag

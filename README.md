@@ -2,6 +2,32 @@
 
 This project contains a sequential/time-division-multiplexed CNN RTL design intended as a layout-friendly baseline for OpenLane/GF180 bring-up.
 
+## GitHub Quickstart
+
+Clone and run the lightweight smoke sequence:
+
+```bash
+git clone https://github.com/Sinalsall/cnn_project.git
+cd cnn_project
+bash scripts/run_github_smoke.sh
+```
+
+The smoke script checks the basic tools, generates MNIST sample index `0`, runs
+the activation SRAM unit test, runs the RTL single-image CNN test, and runs the
+post-layout gate smoke test only if the OpenLane final netlist already exists.
+
+Full end-to-end command sequence:
+
+```text
+docs/test_execution_tutorial.md
+```
+
+GitHub upload/commit manifest:
+
+```text
+docs/github_upload_manifest.md
+```
+
 ## Current Status
 
 The active implementation is in `rtl_sequential/`.
@@ -138,6 +164,9 @@ Current physical-design status:
 
 Important documentation:
 
+- `docs/github_quickstart.md`: clone-and-run instructions for a fresh GitHub checkout.
+- `docs/github_upload_manifest.md`: files to commit, files to ignore, and safe `git add` commands.
+- `docs/test_execution_tutorial.md`: end-to-end command sequence for RTL tests, OpenLane academic signoff checks, post-layout gate functional simulation, and SPICE smoke setup.
 - `openlane/cnn_top_multichannel_serial/README.md`: how to run academic signoff, where logs live, how to extract metrics, and what warnings mean.
 - `openlane/cnn_top_multichannel_serial/signoff_evidence/signoff_status.md`: signoff status and waiver rationale.
 

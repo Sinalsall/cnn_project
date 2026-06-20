@@ -17,8 +17,16 @@ post-layout gate netlist:
 bash openlane/cnn_top_multichannel_serial/postlayout_gate_sim/run_gate_functional_full.sh
 ```
 
-Use the compare run to regenerate the same MNIST sample, run the RTL baseline,
-run the final gate-level netlist, and diff the comparable result lines:
+Use the RTL wrapper run to simulate the pre-synthesis wrapper top with the same
+testbench and SRAM behavioral model as the gate-level run:
+
+```sh
+bash openlane/cnn_top_multichannel_serial/postlayout_gate_sim/run_rtl_wrapper_functional.sh
+```
+
+Use the compare run to regenerate the same MNIST sample, run the RTL wrapper
+baseline, run the final gate-level netlist, and diff the comparable result
+lines:
 
 ```sh
 bash openlane/cnn_top_multichannel_serial/postlayout_gate_sim/compare_rtl_vs_gate_functional.sh 0
@@ -49,7 +57,9 @@ Generated logs are written under `postlayout_gate_sim/build/`:
 - `compile_gate_functional_full.log`: full functional compile log.
 - `run_gate_functional_full.log`: full post-layout gate functional log.
 - `gate_functional_full.summary`: extracted post-layout output scores/class.
-- `rtl_functional.summary`: extracted RTL output scores/class from compare run.
+- `compile_rtl_wrapper_functional.log`: RTL wrapper compile log.
+- `run_rtl_wrapper_functional.log`: RTL wrapper functional log.
+- `rtl_wrapper_functional.summary`: extracted RTL wrapper output scores/class.
 - `rtl_vs_gate_functional.diff`: diff between RTL and gate summaries.
 - `terminal_rtl_vs_gate_functional.log`: combined compare-run transcript.
 
@@ -71,3 +81,24 @@ warning: Omitting $sdf_annotate() since specify blocks and interconnects are bei
 Use the full/compare result as post-layout gate-level functional evidence. For
 timing evidence in the report, cite the OpenLane/OpenROAD STA reports and final
 SDF generation from `wrapper_academic_final`.
+
+## Compare Criteria
+
+The compare script reports two levels:
+
+- Bit-exact score equality: all 10 output scores, cycle count, and predicted
+  class match exactly.
+- Application-level equality: `predicted_class` and output cycle count match,
+  but one or more raw scores differ.
+
+By default, application-level equality exits successfully and prints a warning
+if the score vector is not bit-exact. Set `STRICT_COMPARE=1` when a non-zero
+exit code is required for any score mismatch:
+
+```sh
+STRICT_COMPARE=1 bash openlane/cnn_top_multichannel_serial/postlayout_gate_sim/compare_rtl_vs_gate_functional.sh 0
+```
+
+For equivalence against the final layout netlist, prefer the RTL wrapper
+baseline in this directory over `rtl_sequential/run_mnist_image_serial.sh`,
+because the older RTL runner uses `FAST_SRAM_SIM` and a core-level testbench.
